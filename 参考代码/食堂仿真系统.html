@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>学生食堂排队仿真系统 2026 Pro</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.3.4.3.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.1.0.7.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/echarts.min.5.4.3.js"></script>
+<style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600&display=swap');
+        
+        body {
+            font-family: 'Space Grotesk', 'PingFang SC', sans-serif;
+            background-color: #050a10;
+            color: #e2e8f0;
+            overflow: hidden;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .neo-gradient {
+            background: linear-gradient(135deg, #22d3ee 0%, #818cf8 100%);
+        }
+
+        .status-glow-green { box-shadow: 0 0 15px rgba(34, 197, 94, 0.4); }
+        .status-glow-red { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            height: 4px;
+            border-radius: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #22d3ee;
+            cursor: pointer;
+            box-shadow: 0 0 10px #22d3ee;
+        }
+
+        canvas {
+            cursor: crosshair;
+        }
+
+        /* 2026 触觉卡片 */
+        .touch-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .touch-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(34, 211, 238, 0.4);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col p-4 space-y-4">
+<!-- 1. 顶部参数配置栏 -->
+<header class="glass-panel rounded-2xl p-4 flex items-center justify-between border-b border-cyan-500/20">
+<div class="flex items-center space-x-4">
+<div class="p-2 bg-cyan-500/20 rounded-lg">
+<iconify-icon class="text-3xl text-cyan-400" icon="solar:transmission-bold-duotone"></iconify-icon>
+</div>
+<div>
+<h1 class="text-xl font-bold tracking-tight text-white">智慧食堂仿真系统 <span class="text-xs font-normal text-cyan-500 ml-2">v2026.03.23</span></h1>
+<p class="text-xs text-slate-400">实时队列动力学模拟引擎</p>
+</div>
+</div>
+<div class="flex items-center space-x-8">
+<!-- 参数组 -->
+<div class="flex space-x-6">
+<div class="flex flex-col space-y-1">
+<label class="text-[10px] uppercase text-slate-400 font-bold">人流密度 (Rate)</label>
+<div class="flex items-center space-x-2">
+<input class="w-32" id="flowRate" max="2.0" min="0.1" step="0.1" type="range" value="0.5"/>
+<span class="text-sm font-mono text-cyan-400 w-8 text-right" id="flowRateVal">0.5</span>
+</div>
+</div>
+<div class="flex flex-col space-y-1">
+<label class="text-[10px] uppercase text-slate-400 font-bold">开启窗口数 (Windows)</label>
+<div class="flex items-center space-x-2">
+<input class="w-32" id="windowCount" max="12" min="3" step="1" type="range" value="6"/>
+<span class="text-sm font-mono text-cyan-400 w-8 text-right" id="windowCountVal">6</span>
+</div>
+</div>
+<div class="flex flex-col space-y-1">
+<label class="text-[10px] uppercase text-slate-400 font-bold">耐心阔值 (Patience)</label>
+<div class="flex items-center space-x-2">
+<input class="w-32" id="patience" max="300" min="30" step="10" type="range" value="120"/>
+<span class="text-sm font-mono text-cyan-400 w-8 text-right" id="patienceVal">120s</span>
+</div>
+</div>
+</div>
+<!-- 控制按钮 -->
+<div class="flex items-center space-x-2 ml-4 border-l border-slate-700 pl-6">
+<button class="flex items-center space-x-2 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg transition-all border border-emerald-500/30" id="startBtn">
+<iconify-icon icon="solar:play-bold"></iconify-icon>
+<span class="text-sm font-bold">开始</span>
+</button>
+<button class="flex items-center space-x-2 px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg transition-all border border-amber-500/30" id="pauseBtn">
+<iconify-icon icon="solar:pause-bold"></iconify-icon>
+<span class="text-sm font-bold">暂停</span>
+</button>
+<button class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700" id="resetBtn">
+<iconify-icon icon="solar:restart-bold"></iconify-icon>
+</button>
+<button class="flex items-center space-x-2 px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg transition-all shadow-lg shadow-rose-900/20" id="stressBtn">
+<iconify-icon icon="solar:fire-bold"></iconify-icon>
+<span class="text-sm font-bold">压力测试</span>
+</button>
+</div>
+</div>
+</header>
+<div class="flex flex-1 space-x-4 overflow-hidden">
+<!-- 2. 中间实时仿真画布 -->
+<main class="flex-1 glass-panel rounded-2xl relative overflow-hidden group">
+<div class="absolute top-4 left-4 z-10 flex items-center space-x-2">
+<span class="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+<span class="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Live Simulation Scene</span>
+</div>
+<!-- 画布容器 -->
+<div class="w-full h-full" id="canvasContainer">
+<canvas id="simCanvas"></canvas>
+</div>
+<!-- 画布上的图例 -->
+<div class="absolute bottom-6 left-6 flex space-x-6 text-[10px] text-slate-400 bg-slate-900/50 p-3 rounded-lg backdrop-blur-md">
+<div class="flex items-center space-x-2">
+<div class="w-3 h-3 rounded-full bg-cyan-400"></div>
+<span>等待中学生</span>
+</div>
+<div class="flex items-center space-x-2">
+<div class="w-3 h-3 rounded-md bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+<span>服务空闲窗口</span>
+</div>
+<div class="flex items-center space-x-2">
+<div class="w-3 h-3 rounded-md bg-rose-500 pulse"></div>
+<span>高负载窗口</span>
+</div>
+</div>
+</main>
+<!-- 3. 右侧实时指标监控 -->
+<aside class="w-80 flex flex-col space-y-4 overflow-y-auto">
+<!-- 整体负载卡片 -->
+<div class="glass-panel p-5 rounded-2xl touch-card">
+<div class="flex justify-between items-center mb-4">
+<h3 class="text-sm font-bold text-white">系统当前负载</h3>
+<iconify-icon class="text-xl text-cyan-400" icon="solar:chart-square-bold-duotone"></iconify-icon>
+</div>
+<div class="relative pt-1">
+<div class="flex mb-2 items-center justify-between">
+<div>
+<span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-cyan-400 bg-cyan-900/30" id="loadText">
+                                负载正常
+                            </span>
+</div>
+<div class="text-right">
+<span class="text-xs font-semibold inline-block text-cyan-400 font-mono" id="loadPercent">
+                                0%
+                            </span>
+</div>
+</div>
+<div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-slate-800">
+<div class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-cyan-500 transition-all duration-500" id="loadBar" style="width:0%"></div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4 mt-2">
+<div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+<span class="block text-[10px] text-slate-500 mb-1">当前人数</span>
+<span class="text-lg font-mono font-bold text-white" id="currentWaiters">0</span>
+</div>
+<div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+<span class="block text-[10px] text-slate-500 mb-1">今日人次</span>
+<span class="text-lg font-mono font-bold text-white" id="totalStudents">0</span>
+</div>
+</div>
+</div>
+<!-- 指标仪表盘 -->
+<div class="glass-panel p-5 rounded-2xl flex-1 touch-card space-y-6">
+<div class="flex justify-between items-center">
+<h3 class="text-sm font-bold text-white">实时核心指标</h3>
+<iconify-icon class="text-xl text-rose-400" icon="solar:pulse-bold-duotone"></iconify-icon>
+</div>
+<!-- 指标 1 -->
+<div class="flex items-center space-x-4">
+<div class="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
+<iconify-icon class="text-xl text-indigo-400" icon="solar:clock-circle-bold-duotone"></iconify-icon>
+</div>
+<div class="flex-1">
+<div class="text-[10px] text-slate-500 uppercase tracking-wider">平均等待时间</div>
+<div class="flex items-baseline space-x-1">
+<span class="text-2xl font-mono font-bold text-white" id="avgWaitTime">0.0</span>
+<span class="text-xs text-slate-400 italic">sec</span>
+</div>
+</div>
+</div>
+<!-- 指标 2 -->
+<div class="flex items-center space-x-4">
+<div class="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+<iconify-icon class="text-xl text-orange-400" icon="solar:walking-bold-duotone"></iconify-icon>
+</div>
+<div class="flex-1">
+<div class="text-[10px] text-slate-500 uppercase tracking-wider">客户流失率</div>
+<div class="flex items-baseline space-x-1">
+<span class="text-2xl font-mono font-bold text-white" id="abandonRate">0.0</span>
+<span class="text-xs text-slate-400 italic">%</span>
+</div>
+</div>
+</div>
+<!-- 指标 3 -->
+<div class="flex items-center space-x-4">
+<div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+<iconify-icon class="text-xl text-emerald-400" icon="solar:cup-hot-bold-duotone"></iconify-icon>
+</div>
+<div class="flex-1">
+<div class="text-[10px] text-slate-500 uppercase tracking-wider">资源利用率</div>
+<div class="flex items-baseline space-x-1">
+<span class="text-2xl font-mono font-bold text-white" id="resourceUtil">0.0</span>
+<span class="text-xs text-slate-400 italic">%</span>
+</div>
+</div>
+</div>
+<div class="pt-4 border-t border-slate-800">
+<div class="p-3 bg-cyan-500/5 rounded-xl border border-cyan-500/10">
+<div class="flex items-center space-x-2 mb-2">
+<iconify-icon class="text-cyan-400" icon="solar:info-circle-bold-duotone"></iconify-icon>
+<span class="text-[10px] text-cyan-300 font-bold">智能建议</span>
+</div>
+<p class="text-[11px] text-slate-400 leading-relaxed" id="systemAdvice">
+                            系统运行平稳，当前资源配置可以满足用餐高峰需求。
+                        </p>
+</div>
+</div>
+</div>
+</aside>
+</div>
+<!-- 4. 底部数据分析图表 -->
+<footer class="glass-panel h-64 rounded-2xl p-4 flex flex-col relative">
+<div class="flex justify-between items-center mb-2 px-2">
+<div class="flex items-center space-x-2">
+<iconify-icon class="text-indigo-400 text-lg" icon="solar:graph-bold-duotone"></iconify-icon>
+<h3 class="text-xs font-bold text-white tracking-widest uppercase">Temporal Queue Dynamics (时序队列动力学)</h3>
+</div>
+<div class="flex items-center space-x-4">
+<div class="flex items-center space-x-1">
+<span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+<span class="text-[10px] text-slate-400">队列总人数</span>
+</div>
+<div class="flex items-center space-x-1">
+<span class="w-2 h-2 rounded-full bg-rose-400"></span>
+<span class="text-[10px] text-slate-400">生效窗口数</span>
+</div>
+</div>
+</div>
+<div class="flex-1 w-full" id="historyChart"></div>
+</footer>
+<script>
+        // --- 核心状态与仿真逻辑 ---
+        const CONFIG = {
+            flowRate: 0.5,
+            windowCount: 6,
+            patience: 120,
+            canvasWidth: 0,
+            canvasHeight: 0,
+            studentRadius: 5,
+            windowSize: { w: 60, h: 40 },
+            entranceX: 50,
+            simRunning: false
+        };
+
+        let students = [];
+        let windows = [];
+        let timeSteps = 0;
+        let chartData = { time: [], queueSize: [], activeWindows: [] };
+        let metrics = { totalJoined: 0, totalLeaved: 0, totalWaitTime: 0, lostCount: 0 };
+
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        let chart;
+
+        // 初始化窗口
+        function initWindows() {
+            windows = [];
+            const margin = 40;
+            const availableWidth = CONFIG.canvasWidth - 200;
+            const spacing = availableWidth / (CONFIG.windowCount - 1);
+            
+            for (let i = 0; i < CONFIG.windowCount; i++) {
+                windows.push({
+                    id: i,
+                    x: 150 + i * spacing,
+                    y: 80,
+                    queue: [],
+                    isServing: false,
+                    workload: 0, // 0-100
+                    processingTime: 0
+                });
+            }
+        }
+
+        // 窗口绘制
+        function drawWindows() {
+            windows.forEach(win => {
+                const isOverloaded = win.queue.length > 5;
+                // 窗口主体
+                ctx.fillStyle = isOverloaded ? 'rgba(244, 63, 94, 0.2)' : 'rgba(16, 185, 129, 0.2)';
+                ctx.strokeStyle = isOverloaded ? '#f43f5e' : '#10b981';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(win.x - CONFIG.windowSize.w/2, win.y - CONFIG.windowSize.h/2, CONFIG.windowSize.w, CONFIG.windowSize.h, 8);
+                ctx.fill();
+                ctx.stroke();
+
+                // 窗口阴影
+                if (isOverloaded) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#f43f5e';
+                }
+
+                // 计数
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 12px Mono';
+                ctx.textAlign = 'center';
+                ctx.fillText(`W-${win.id+1}`, win.x, win.y - 5);
+                ctx.font = '10px Mono';
+                ctx.fillStyle = isOverloaded ? '#fda4af' : '#6ee7b7';
+                ctx.fillText(`Q: ${win.queue.length}`, win.x, win.y + 12);
+                
+                ctx.shadowBlur = 0;
+            });
+        }
+
+        // 学生类
+        class Student {
+            constructor() {
+                this.x = CONFIG.entranceX;
+                this.y = CONFIG.canvasHeight - 50;
+                this.targetWindowId = -1;
+                this.status = 'walking'; // walking, queuing, served, abandoned
+                this.patience = CONFIG.patience * (0.8 + Math.random() * 0.4);
+                this.waitTime = 0;
+                this.color = '#22d3ee';
+                this.size = CONFIG.studentRadius;
+                this.speed = 2 + Math.random() * 2;
+                this.posInQueue = 0;
+            }
+
+            update() {
+                if (this.status === 'walking') {
+                    // 找到最短队列
+                    if (this.targetWindowId === -1) {
+                        let minLen = Infinity;
+                        windows.forEach(w => {
+                            if (w.queue.length < minLen) {
+                                minLen = w.queue.length;
+                                this.targetWindowId = w.id;
+                            }
+                        });
+                        windows[this.targetWindowId].queue.push(this);
+                        this.posInQueue = windows[this.targetWindowId].queue.indexOf(this);
+                    }
+
+                    const targetWin = windows[this.targetWindowId];
+                    const targetX = targetWin.x;
+                    const targetY = targetWin.y + 60 + (this.posInQueue * 15);
+
+                    // 移动到目标位置
+                    const dx = targetX - this.x;
+                    const dy = targetY - this.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+
+                    if (dist > 5) {
+                        this.x += (dx / dist) * this.speed;
+                        this.y += (dy / dist) * this.speed;
+                    } else {
+                        this.status = 'queuing';
+                    }
+                } else if (this.status === 'queuing') {
+                    const targetWin = windows[this.targetWindowId];
+                    this.posInQueue = targetWin.queue.indexOf(this);
+                    
+                    // 自动跟进队列
+                    const targetY = targetWin.y + 60 + (this.posInQueue * 15);
+                    this.y += (targetY - this.y) * 0.1;
+                    this.x += (targetWin.x - this.x) * 0.1;
+
+                    this.waitTime++;
+                    if (this.waitTime > this.patience) {
+                        this.status = 'abandoned';
+                        targetWin.queue.splice(this.posInQueue, 1);
+                        metrics.lostCount++;
+                    }
+                    
+                    // 渐变报警色
+                    if (this.waitTime > this.patience * 0.7) {
+                        this.color = '#fbbf24';
+                    }
+                    if (this.waitTime > this.patience * 0.9) {
+                        this.color = '#f87171';
+                    }
+                }
+            }
+
+            draw() {
+                if (this.status === 'abandoned') return;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                if (this.status === 'queuing' && this.posInQueue === 0) {
+                   ctx.strokeStyle = '#fff';
+                   ctx.lineWidth = 1;
+                   ctx.stroke();
+                }
+            }
+        }
+
+        // 执行仿真步
+        function step() {
+            if (!CONFIG.simRunning) return;
+
+            // 生成新学生
+            if (Math.random() < CONFIG.flowRate) {
+                students.push(new Student());
+                metrics.totalJoined++;
+            }
+
+            // 更新窗口服务
+            windows.forEach(win => {
+                if (win.queue.length > 0) {
+                    win.processingTime++;
+                    // 假设服务一个学生耗时 30-80 帧
+                    const serviceThreshold = 50 + Math.random() * 30;
+                    if (win.processingTime > serviceThreshold) {
+                        const served = win.queue.shift();
+                        metrics.totalLeaved++;
+                        metrics.totalWaitTime += served.waitTime;
+                        win.processingTime = 0;
+                        // 移除该学生实例
+                        students = students.filter(s => s !== served);
+                    }
+                }
+            });
+
+            // 更新学生
+            students.forEach(s => s.update());
+            students = students.filter(s => s.status !== 'abandoned');
+
+            timeSteps++;
+            if (timeSteps % 60 === 0) updateStats();
+            
+            draw();
+            requestAnimationFrame(step);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+            
+            // 绘制背景格栅
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 1;
+            for(let i=0; i<CONFIG.canvasWidth; i+=40) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, CONFIG.canvasHeight); ctx.stroke();
+            }
+            for(let i=0; i<CONFIG.canvasHeight; i+=40) {
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(CONFIG.canvasWidth, i); ctx.stroke();
+            }
+
+            drawWindows();
+            students.forEach(s => s.draw());
+        }
+
+        function updateStats() {
+            const currentQ = students.length;
+            const avgWait = metrics.totalLeaved > 0 ? (metrics.totalWaitTime / metrics.totalLeaved / 60).toFixed(1) : 0;
+            const lossRate = metrics.totalJoined > 0 ? ((metrics.lostCount / metrics.totalJoined) * 100).toFixed(1) : 0;
+            const util = (windows.filter(w => w.queue.length > 0).length / windows.length * 100).toFixed(1);
+            
+            document.getElementById('currentWaiters').textContent = currentQ;
+            document.getElementById('totalStudents').textContent = metrics.totalJoined;
+            document.getElementById('avgWaitTime').textContent = avgWait;
+            document.getElementById('abandonRate').textContent = lossRate;
+            document.getElementById('resourceUtil').textContent = util;
+
+            const load = Math.min(100, (currentQ / (CONFIG.windowCount * 5)) * 100);
+            document.getElementById('loadPercent').textContent = Math.round(load) + '%';
+            document.getElementById('loadBar').style.width = load + '%';
+            
+            const advice = document.getElementById('systemAdvice');
+            if(load > 80) {
+                advice.innerHTML = "⚠️ <b>高负载警报</b>：排队人数过多，建议立即加开 2-3 个服务窗口。";
+                advice.parentElement.classList.replace('bg-cyan-500/5', 'bg-rose-500/10');
+            } else if (lossRate > 10) {
+                advice.innerHTML = "💡 <b>效率偏低</b>：学生流失率较高，尝试提高服务人员响应速度。";
+                advice.parentElement.classList.replace('bg-cyan-500/5', 'bg-amber-500/10');
+            } else {
+                advice.innerHTML = "✅ <b>系统平稳</b>：当前资源配置可以满足用餐需求。";
+                advice.parentElement.className = "p-3 bg-cyan-500/5 rounded-xl border border-cyan-500/10";
+            }
+
+            // 更新图表
+            const now = new Date().toLocaleTimeString();
+            chartData.time.push(now);
+            chartData.queueSize.push(currentQ);
+            chartData.activeWindows.push(CONFIG.windowCount);
+            if (chartData.time.length > 30) {
+                chartData.time.shift();
+                chartData.queueSize.shift();
+                chartData.activeWindows.shift();
+            }
+            chart.setOption({
+                xAxis: { data: chartData.time },
+                series: [
+                    { data: chartData.queueSize },
+                    { data: chartData.activeWindows }
+                ]
+            });
+        }
+
+        // --- 初始化控制 ---
+        function handleResize() {
+            const container = document.getElementById('canvasContainer');
+            CONFIG.canvasWidth = container.clientWidth;
+            CONFIG.canvasHeight = container.clientHeight;
+            canvas.width = CONFIG.canvasWidth;
+            canvas.height = CONFIG.canvasHeight;
+            initWindows();
+            draw();
+        }
+
+        function initChart() {
+            chart = echarts.init(document.getElementById('historyChart'));
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: { trigger: 'axis', backgroundColor: '#0f172a', borderColor: '#1e293b', textStyle: { color: '#fff' } },
+                grid: { top: 20, left: 40, right: 40, bottom: 20 },
+                xAxis: {
+                    type: 'category',
+                    boundaryGap: false,
+                    data: [],
+                    axisLine: { lineStyle: { color: '#334155' } },
+                    axisLabel: { color: '#64748b', fontSize: 10 }
+                },
+                yAxis: [
+                    { type: 'value', name: '人数', splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }, axisLabel: { color: '#64748b' } },
+                    { type: 'value', name: '窗口', position: 'right', max: 15, splitLine: { show: false }, axisLabel: { color: '#64748b' } }
+                ],
+                series: [
+                    {
+                        name: '排队总人数',
+                        type: 'line',
+                        smooth: true,
+                        showSymbol: false,
+                        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{offset: 0, color: 'rgba(34, 211, 238, 0.3)'}, {offset: 1, color: 'transparent'}]) },
+                        lineStyle: { width: 3, color: '#22d3ee' },
+                        data: []
+                    },
+                    {
+                        name: '开启窗口数',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        step: 'start',
+                        lineStyle: { width: 2, color: '#f43f5e', type: 'dashed' },
+                        data: []
+                    }
+                ]
+            };
+            chart.setOption(option);
+        }
+
+        // 事件监听
+        document.getElementById('flowRate').oninput = e => {
+            CONFIG.flowRate = parseFloat(e.target.value);
+            document.getElementById('flowRateVal').textContent = CONFIG.flowRate;
+        };
+        document.getElementById('windowCount').oninput = e => {
+            CONFIG.windowCount = parseInt(e.target.value);
+            document.getElementById('windowCountVal').textContent = CONFIG.windowCount;
+            initWindows(); // 重建窗口
+        };
+        document.getElementById('patience').oninput = e => {
+            CONFIG.patience = parseInt(e.target.value);
+            document.getElementById('patienceVal').textContent = CONFIG.patience + 's';
+        };
+
+        document.getElementById('startBtn').onclick = () => { CONFIG.simRunning = true; step(); };
+        document.getElementById('pauseBtn').onclick = () => { CONFIG.simRunning = false; };
+        document.getElementById('resetBtn').onclick = () => { location.reload(); };
+        document.getElementById('stressBtn').onclick = () => {
+            CONFIG.flowRate = 2.0;
+            CONFIG.patience = 60;
+            document.getElementById('flowRate').value = 2.0;
+            document.getElementById('patience').value = 60;
+            document.getElementById('flowRateVal').textContent = '2.0';
+            document.getElementById('patienceVal').textContent = '60s';
+            CONFIG.simRunning = true;
+            step();
+        };
+
+        window.onload = () => {
+            handleResize();
+            initChart();
+            window.addEventListener('resize', () => { handleResize(); chart.resize(); });
+            draw();
+        };
+    </script>
+</body>
+</html>
