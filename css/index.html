@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>北京交通大学智慧食堂仿真系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background:
+                radial-gradient(circle at 20% 10%, rgba(14, 165, 233, 0.18), transparent 26rem),
+                radial-gradient(circle at 78% 18%, rgba(34, 197, 94, 0.14), transparent 24rem),
+                #08111f;
+        }
+
+        .person {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 2px;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.18); opacity: 0.72; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .table {
+            min-height: 48px;
+            transition: transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+        }
+
+        .table:hover {
+            transform: translateY(-2px);
+        }
+
+        .table-occupied { background-color: rgba(248, 113, 113, 0.16); border: 1px solid rgba(248, 113, 113, 0.75); color: #fecaca; }
+        .table-empty { background-color: rgba(74, 222, 128, 0.14); border: 1px solid rgba(74, 222, 128, 0.65); color: #bbf7d0; }
+        .table-maintenance { background-color: rgba(251, 191, 36, 0.16); border: 1px solid rgba(251, 191, 36, 0.75); color: #fde68a; }
+
+        input[type="range"] {
+            accent-color: #38bdf8;
+        }
+
+        .chart-box {
+            height: 240px;
+        }
+
+        .chart-canvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-white">
+    <main class="mx-auto max-w-7xl px-4 py-6 lg:px-6">
+        <header class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+                <p class="text-sm font-semibold text-sky-300">Canteen Simulation Lab</p>
+                <h1 class="mt-1 text-3xl font-bold text-white">BJTU 智慧食堂仿真系统</h1>
+                <p id="status-line" class="mt-2 text-sm text-slate-400">正在连接仿真服务...</p>
+            </div>
+            <div class="flex flex-wrap gap-2 text-sm">
+                <span class="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-emerald-200"><span class="h-2 w-2 rounded-full bg-emerald-400"></span>空闲</span>
+                <span class="inline-flex items-center gap-2 rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1 text-red-200"><span class="h-2 w-2 rounded-full bg-red-400"></span>占用</span>
+                <span class="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-amber-200"><span class="h-2 w-2 rounded-full bg-amber-400"></span>维护</span>
+            </div>
+        </header>
+
+        <section class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
+            <div class="rounded-lg border border-slate-700 bg-slate-900/70 p-4">
+                <p class="text-xs text-slate-400">总人数</p>
+                <p id="stat-people" class="mt-1 text-2xl font-bold text-sky-300">--</p>
+            </div>
+            <div class="rounded-lg border border-slate-700 bg-slate-900/70 p-4">
+                <p class="text-xs text-slate-400">用餐桌数</p>
+                <p id="stat-occupied" class="mt-1 text-2xl font-bold text-emerald-300">--</p>
+            </div>
+            <div class="rounded-lg border border-slate-700 bg-slate-900/70 p-4">
+                <p class="text-xs text-slate-400">空闲桌数</p>
+                <p id="stat-empty" class="mt-1 text-2xl font-bold text-lime-300">--</p>
+            </div>
+            <div class="rounded-lg border border-slate-700 bg-slate-900/70 p-4">
+                <p class="text-xs text-slate-400">平均等待</p>
+                <p id="stat-wait" class="mt-1 text-2xl font-bold text-amber-300">--</p>
+            </div>
+            <div class="rounded-lg border border-slate-700 bg-slate-900/70 p-4">
+                <p class="text-xs text-slate-400">开放窗口</p>
+                <p id="stat-windows" class="mt-1 text-2xl font-bold text-cyan-300">--</p>
+            </div>
+            <div class="rounded-lg border border-slate-700 bg-slate-900/70 p-4">
+                <p class="text-xs text-slate-400">餐桌总数</p>
+                <p id="stat-tables" class="mt-1 text-2xl font-bold text-violet-300">--</p>
+            </div>
+        </section>
+
+        <section class="mb-6 rounded-lg border border-slate-700 bg-slate-900/80 p-4">
+            <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-100">结果统计</h2>
+                    <p id="chart-summary" class="mt-1 text-sm text-slate-400">等待仿真数据积累...</p>
+                </div>
+                <button id="clear-history" class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-200 transition hover:border-sky-400 hover:text-sky-200" type="button">
+                    <i data-lucide="eraser" class="h-4 w-4"></i>
+                    清空统计
+                </button>
+            </div>
+
+            <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div class="rounded-lg border border-slate-800 bg-slate-950/80 p-3">
+                    <p class="text-xs text-slate-500">峰值人数</p>
+                    <p id="result-peak-people" class="mt-1 text-xl font-bold text-sky-300">--</p>
+                </div>
+                <div class="rounded-lg border border-slate-800 bg-slate-950/80 p-3">
+                    <p class="text-xs text-slate-500">最大等待</p>
+                    <p id="result-max-wait" class="mt-1 text-xl font-bold text-amber-300">--</p>
+                </div>
+                <div class="rounded-lg border border-slate-800 bg-slate-950/80 p-3">
+                    <p class="text-xs text-slate-500">平均占用率</p>
+                    <p id="result-avg-occupancy" class="mt-1 text-xl font-bold text-emerald-300">--</p>
+                </div>
+                <div class="rounded-lg border border-slate-800 bg-slate-950/80 p-3">
+                    <p class="text-xs text-slate-500">采样次数</p>
+                    <p id="result-samples" class="mt-1 text-xl font-bold text-violet-300">0</p>
+                </div>
+            </div>
+
+            <div class="grid gap-4 lg:grid-cols-2">
+                <div class="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+                    <div class="mb-3 flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-slate-200">人数与等待时间趋势</h3>
+                        <span class="text-xs text-slate-500">最近 30 次刷新</span>
+                    </div>
+                    <div class="chart-box"><canvas id="trend-chart" class="chart-canvas"></canvas></div>
+                </div>
+                <div class="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+                    <div class="mb-3 flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-slate-200">餐桌占用率趋势</h3>
+                        <span class="text-xs text-slate-500">百分比</span>
+                    </div>
+                    <div class="chart-box"><canvas id="occupancy-chart" class="chart-canvas"></canvas></div>
+                </div>
+                <div class="rounded-lg border border-slate-800 bg-slate-950/70 p-4 lg:col-span-2">
+                    <div class="mb-3 flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-slate-200">各窗口当前排队人数</h3>
+                        <span id="queue-chart-note" class="text-xs text-slate-500">--</span>
+                    </div>
+                    <div class="chart-box"><canvas id="queue-chart" class="chart-canvas"></canvas></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="mb-6 grid gap-4 lg:grid-cols-[1.05fr_1.95fr]">
+            <div class="rounded-lg border border-slate-700 bg-slate-900/80 p-4">
+                <div class="mb-4 flex items-center justify-between">
+                    <h2 class="text-lg font-bold text-slate-100">场景预设</h2>
+                    <button id="refresh-now" class="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-2 text-sm font-bold text-white transition hover:bg-sky-400" type="button">
+                        <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                        刷新
+                    </button>
+                </div>
+                <div id="scenario-buttons" class="grid grid-cols-2 gap-2"></div>
+            </div>
+
+            <div class="rounded-lg border border-slate-700 bg-slate-900/80 p-4">
+                <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <h2 class="text-lg font-bold text-slate-100">仿真参数</h2>
+                    <button id="apply-settings" class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-emerald-400" type="button">
+                        <i data-lucide="sliders-horizontal" class="h-4 w-4"></i>
+                        应用参数
+                    </button>
+                </div>
+                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <label class="space-y-2">
+                        <span class="flex justify-between text-sm"><span class="text-slate-300">最少排队人数</span><b id="queueMin-value">1</b></span>
+                        <input id="queueMin" class="w-full" type="range" min="0" max="50" value="1">
+                    </label>
+                    <label class="space-y-2">
+                        <span class="flex justify-between text-sm"><span class="text-slate-300">最多排队人数</span><b id="queueMax-value">15</b></span>
+                        <input id="queueMax" class="w-full" type="range" min="0" max="80" value="15">
+                    </label>
+                    <label class="space-y-2">
+                        <span class="flex justify-between text-sm"><span class="text-slate-300">窗口关闭概率</span><b id="closedRate-value">10%</b></span>
+                        <input id="closedRate" class="w-full" type="range" min="0" max="100" value="10">
+                    </label>
+                    <label class="space-y-2">
+                        <span class="flex justify-between text-sm"><span class="text-slate-300">餐桌占用概率</span><b id="occupancyRate-value">60%</b></span>
+                        <input id="occupancyRate" class="w-full" type="range" min="0" max="100" value="60">
+                    </label>
+                    <label class="space-y-2">
+                        <span class="flex justify-between text-sm"><span class="text-slate-300">维护概率</span><b id="maintenanceRate-value">2%</b></span>
+                        <input id="maintenanceRate" class="w-full" type="range" min="0" max="100" value="2">
+                    </label>
+                    <label class="space-y-2">
+                        <span class="flex justify-between text-sm"><span class="text-slate-300">餐桌数量</span><b id="tableCount-value">80</b></span>
+                        <input id="tableCount" class="w-full" type="range" min="10" max="160" value="80">
+                    </label>
+                    <label class="space-y-2 md:col-span-2 xl:col-span-1">
+                        <span class="flex justify-between text-sm"><span class="text-slate-300">刷新间隔</span><b id="refreshInterval-value">3s</b></span>
+                        <input id="refreshInterval" class="w-full" type="range" min="1" max="15" value="3">
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <section class="mb-6 rounded-lg border border-slate-700 bg-slate-900/80 p-4">
+            <div class="mb-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-100">窗口排队</h2>
+                    <p id="window-summary" class="mt-1 text-sm text-slate-400">--</p>
+                </div>
+
+                <form id="window-form" class="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <input id="window-name" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-sky-400" type="text" placeholder="窗口名称" required>
+                    <input id="window-category" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-sky-400" type="text" placeholder="分类">
+                    <button class="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-sky-400" type="submit">
+                        <i data-lucide="plus" class="h-4 w-4"></i>
+                        新增窗口
+                    </button>
+                </form>
+            </div>
+            <div id="windows-grid" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"></div>
+        </section>
+
+        <section class="rounded-lg border border-slate-700 bg-slate-900/80 p-4">
+            <div class="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-100">大厅餐桌分布</h2>
+                    <p id="table-summary" class="mt-1 text-sm text-slate-400">--</p>
+                </div>
+                <p id="updated-at" class="text-sm text-slate-500">--</p>
+            </div>
+            <div id="table-map" class="grid gap-2"></div>
+        </section>
+    </main>
+
+    <script>
+        const API_BASE = 'http://localhost:8888/api';
+        const settingKeys = ['queueMin', 'queueMax', 'closedRate', 'occupancyRate', 'maintenanceRate', 'tableCount', 'refreshInterval'];
+        let settings = {};
+        let refreshTimer = null;
+        let latestWindows = [];
+        let latestTables = [];
+        let latestStats = null;
+        const history = [];
+        const historyLimit = 30;
+        const renderIcons = () => {
+            if (window.lucide) window.lucide.createIcons();
+        };
+
+        const scenarios = [
+            { name: '平峰', icon: 'sun', values: { queueMin: 0, queueMax: 8, closedRate: 5, occupancyRate: 38, maintenanceRate: 1, tableCount: 80, refreshInterval: 4 } },
+            { name: '午餐高峰', icon: 'flame', values: { queueMin: 10, queueMax: 35, closedRate: 8, occupancyRate: 86, maintenanceRate: 2, tableCount: 100, refreshInterval: 2 } },
+            { name: '晚高峰', icon: 'moon', values: { queueMin: 6, queueMax: 24, closedRate: 12, occupancyRate: 74, maintenanceRate: 3, tableCount: 90, refreshInterval: 3 } },
+            { name: '极端拥堵', icon: 'alarm-clock', values: { queueMin: 24, queueMax: 55, closedRate: 20, occupancyRate: 95, maintenanceRate: 4, tableCount: 120, refreshInterval: 1 } },
+            { name: '设备维护', icon: 'wrench', values: { queueMin: 4, queueMax: 18, closedRate: 35, occupancyRate: 52, maintenanceRate: 18, tableCount: 70, refreshInterval: 3 } },
+            { name: '空闲时段', icon: 'leaf', values: { queueMin: 0, queueMax: 5, closedRate: 18, occupancyRate: 20, maintenanceRate: 2, tableCount: 60, refreshInterval: 5 } }
+        ];
+
+        function setStatus(text) {
+            document.getElementById('status-line').textContent = text;
+        }
+
+        function suffixFor(key) {
+            if (['closedRate', 'occupancyRate', 'maintenanceRate'].includes(key)) return '%';
+            if (key === 'refreshInterval') return 's';
+            return '';
+        }
+
+        function syncSettingInputs(nextSettings) {
+            settings = { ...settings, ...nextSettings };
+            settingKeys.forEach(key => {
+                const input = document.getElementById(key);
+                const value = document.getElementById(`${key}-value`);
+                if (!input || settings[key] === undefined) return;
+                input.value = settings[key];
+                value.textContent = `${settings[key]}${suffixFor(key)}`;
+            });
+        }
+
+        function collectSettings() {
+            const nextSettings = {};
+            settingKeys.forEach(key => {
+                nextSettings[key] = Number(document.getElementById(key).value);
+            });
+            if (nextSettings.queueMin > nextSettings.queueMax) {
+                [nextSettings.queueMin, nextSettings.queueMax] = [nextSettings.queueMax, nextSettings.queueMin];
+            }
+            return nextSettings;
+        }
+
+        async function fetchSettings() {
+            const response = await fetch(`${API_BASE}/settings`);
+            const data = await response.json();
+            syncSettingInputs(data);
+            restartTimer();
+        }
+
+        async function applySettings(nextSettings = collectSettings()) {
+            const response = await fetch(`${API_BASE}/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(nextSettings)
+            });
+            const data = await response.json();
+            syncSettingInputs(data);
+            restartTimer();
+            await updateData();
+        }
+
+        function restartTimer() {
+            if (refreshTimer) clearInterval(refreshTimer);
+            const interval = Number(settings.refreshInterval || 3) * 1000;
+            refreshTimer = setInterval(updateData, interval);
+        }
+
+        async function fetchWindows() {
+            const response = await fetch(`${API_BASE}/windows`);
+            const data = await response.json();
+            updateWindows(data);
+            return data;
+        }
+
+        function updateWindows(windows) {
+            latestWindows = windows;
+            const grid = document.getElementById('windows-grid');
+            grid.innerHTML = '';
+
+            const openCount = windows.filter(win => win.status === 'open').length;
+            document.getElementById('window-summary').textContent = `${windows.length} 个窗口，${openCount} 个开放`;
+
+            if (windows.length === 0) {
+                grid.innerHTML = '<div class="rounded-lg border border-slate-700 bg-slate-950 p-4 text-sm text-slate-400">暂无窗口</div>';
+                return;
+            }
+
+            windows.forEach((win, index) => {
+                const card = document.createElement('div');
+                const isClosed = win.status === 'closed';
+                card.className = `rounded-lg border p-4 ${isClosed ? 'border-red-500/45 bg-red-500/10' : 'border-slate-700 bg-slate-950/80'}`;
+
+                const header = document.createElement('div');
+                header.className = 'mb-3 flex justify-between gap-3';
+
+                const titleWrap = document.createElement('div');
+                titleWrap.className = 'min-w-0';
+                titleWrap.innerHTML = `
+                    <div class="truncate font-bold text-slate-100">${index + 1}号窗口</div>
+                    <div class="truncate text-sm text-slate-400">${win.name} · ${win.category}</div>
+                `;
+
+                const actions = document.createElement('div');
+                actions.className = 'flex shrink-0 flex-col items-end gap-2';
+                actions.innerHTML = `
+                    <span class="${isClosed ? 'text-red-300' : 'text-slate-400'} text-xs">${isClosed ? '已关闭' : `等待 ${win.waitTime}`}</span>
+                    <button class="inline-flex items-center gap-1 text-xs text-slate-400 transition hover:text-red-300" type="button">
+                        <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>删除
+                    </button>
+                `;
+                actions.querySelector('button').addEventListener('click', () => deleteWindow(win.id, win.name));
+
+                const queue = document.createElement('div');
+                queue.className = 'flex h-9 items-center overflow-hidden rounded-lg bg-slate-900 px-2';
+
+                if (isClosed) {
+                    queue.innerHTML = '<span class="text-xs text-red-300">窗口关闭</span>';
+                } else if (win.queueCount === 0) {
+                    queue.innerHTML = '<span class="text-xs text-emerald-300">无需排队</span>';
+                } else {
+                    for (let j = 0; j < win.queueCount; j++) {
+                        const person = document.createElement('div');
+                        person.className = 'person';
+                        person.style.backgroundColor = win.queueCount > 25 ? '#fb7185' : win.queueCount > 10 ? '#fbbf24' : '#38bdf8';
+                        queue.appendChild(person);
+                    }
+                }
+
+                const footer = document.createElement('div');
+                footer.className = 'mt-3 flex items-center justify-between text-xs text-slate-500';
+                footer.innerHTML = `<span>排队 ${win.queueCount} 人</span><span>${win.status === 'open' ? '运行中' : '暂停服务'}</span>`;
+
+                header.appendChild(titleWrap);
+                header.appendChild(actions);
+                card.appendChild(header);
+                card.appendChild(queue);
+                card.appendChild(footer);
+                grid.appendChild(card);
+            });
+            renderIcons();
+        }
+
+        async function addWindow(event) {
+            event.preventDefault();
+            const nameInput = document.getElementById('window-name');
+            const categoryInput = document.getElementById('window-category');
+            const name = nameInput.value.trim();
+            const category = categoryInput.value.trim();
+            if (!name) return;
+
+            const response = await fetch(`${API_BASE}/windows`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, category })
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                alert(error.error || '新增窗口失败');
+                return;
+            }
+            nameInput.value = '';
+            categoryInput.value = '';
+            await updateData();
+        }
+
+        async function deleteWindow(id, name) {
+            if (!confirm(`确定删除“${name}”吗？`)) return;
+
+            const response = await fetch(`${API_BASE}/windows/${id}`, { method: 'DELETE' });
+            if (!response.ok) {
+                const error = await response.json();
+                alert(error.error || '删除窗口失败');
+                return;
+            }
+            await updateData();
+        }
+
+        async function fetchTables() {
+            const response = await fetch(`${API_BASE}/tables`);
+            const data = await response.json();
+            updateTables(data);
+            return data;
+        }
+
+        function updateTables(tables) {
+            latestTables = tables;
+            const map = document.getElementById('table-map');
+            map.innerHTML = '';
+            const columns = Math.min(16, Math.max(5, Math.ceil(Math.sqrt(tables.length * 1.4))));
+            map.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+
+            const occupied = tables.filter(table => table.isOccupied && !table.isMaintenance).length;
+            const maintenance = tables.filter(table => table.isMaintenance).length;
+            document.getElementById('table-summary').textContent = `${tables.length} 张餐桌，${occupied} 张占用，${maintenance} 张维护`;
+
+            tables.forEach(tableData => {
+                const table = document.createElement('div');
+                const stateClass = tableData.isMaintenance ? 'table-maintenance' : tableData.isOccupied ? 'table-occupied' : 'table-empty';
+                table.className = `table ${stateClass} flex items-center justify-center rounded-lg text-xs font-bold`;
+                table.textContent = tableData.isMaintenance ? '修' : tableData.isOccupied ? `${tableData.currentPeople}/${tableData.capacity}` : tableData.id;
+                table.title = `${tableData.id}号餐桌`;
+                map.appendChild(table);
+            });
+        }
+
+        async function fetchStatistics() {
+            const response = await fetch(`${API_BASE}/statistics`);
+            const data = await response.json();
+            updateStatistics(data);
+            return data;
+        }
+
+        function updateStatistics(stats) {
+            latestStats = stats;
+            document.getElementById('stat-people').textContent = stats.totalPeople;
+            document.getElementById('stat-occupied').textContent = stats.occupiedTables;
+            document.getElementById('stat-empty').textContent = stats.emptyTables;
+            document.getElementById('stat-wait').textContent = `${stats.avgWaitTime}min`;
+            document.getElementById('stat-windows').textContent = `${stats.openWindows}/${stats.totalWindows}`;
+            document.getElementById('stat-tables').textContent = stats.totalTables;
+            document.getElementById('updated-at').textContent = `更新时间 ${stats.updateTime}`;
+        }
+
+        function addHistoryPoint() {
+            if (!latestStats) return;
+            const occupancyRate = latestStats.totalTables === 0
+                ? 0
+                : Math.round((latestStats.occupiedTables / latestStats.totalTables) * 100);
+
+            history.push({
+                time: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                people: latestStats.totalPeople,
+                wait: latestStats.avgWaitTime,
+                occupancyRate,
+                openWindows: latestStats.openWindows,
+                totalWindows: latestStats.totalWindows
+            });
+
+            if (history.length > historyLimit) history.shift();
+            updateResultSummary();
+            renderCharts();
+        }
+
+        function clearHistory() {
+            history.length = 0;
+            updateResultSummary();
+            renderCharts();
+        }
+
+        function updateResultSummary() {
+            if (history.length === 0) {
+                document.getElementById('chart-summary').textContent = '等待仿真数据积累...';
+                document.getElementById('result-peak-people').textContent = '--';
+                document.getElementById('result-max-wait').textContent = '--';
+                document.getElementById('result-avg-occupancy').textContent = '--';
+                document.getElementById('result-samples').textContent = '0';
+                return;
+            }
+
+            const peakPeople = Math.max(...history.map(item => item.people));
+            const maxWait = Math.max(...history.map(item => item.wait));
+            const avgOccupancy = Math.round(history.reduce((sum, item) => sum + item.occupancyRate, 0) / history.length);
+            const latest = history[history.length - 1];
+
+            document.getElementById('chart-summary').textContent = `最近采样：${latest.time}，人数 ${latest.people}，平均等待 ${latest.wait}min，占用率 ${latest.occupancyRate}%`;
+            document.getElementById('result-peak-people').textContent = peakPeople;
+            document.getElementById('result-max-wait').textContent = `${maxWait}min`;
+            document.getElementById('result-avg-occupancy').textContent = `${avgOccupancy}%`;
+            document.getElementById('result-samples').textContent = history.length;
+        }
+
+        function setupCanvas(canvas) {
+            const ratio = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = Math.max(1, Math.floor(rect.width * ratio));
+            canvas.height = Math.max(1, Math.floor(rect.height * ratio));
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+            return { ctx, width: rect.width, height: rect.height };
+        }
+
+        function drawEmptyChart(canvasId, text) {
+            const canvas = document.getElementById(canvasId);
+            const { ctx, width, height } = setupCanvas(canvas);
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, width / 2, height / 2);
+        }
+
+        function drawGrid(ctx, width, height, padding) {
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = padding.top + ((height - padding.top - padding.bottom) / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(padding.left, y);
+                ctx.lineTo(width - padding.right, y);
+                ctx.stroke();
+            }
+        }
+
+        function drawLineSeries(ctx, points, color) {
+            if (points.length === 0) return;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            points.forEach((point, index) => {
+                if (index === 0) ctx.moveTo(point.x, point.y);
+                else ctx.lineTo(point.x, point.y);
+            });
+            ctx.stroke();
+
+            ctx.fillStyle = color;
+            points.forEach(point => {
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function renderTrendChart() {
+            if (history.length < 2) {
+                drawEmptyChart('trend-chart', '至少需要 2 次采样生成趋势线');
+                return;
+            }
+
+            const canvas = document.getElementById('trend-chart');
+            const { ctx, width, height } = setupCanvas(canvas);
+            const padding = { top: 18, right: 20, bottom: 34, left: 42 };
+            const plotWidth = width - padding.left - padding.right;
+            const plotHeight = height - padding.top - padding.bottom;
+            const maxPeople = Math.max(1, ...history.map(item => item.people));
+            const maxWait = Math.max(1, ...history.map(item => item.wait));
+
+            ctx.clearRect(0, 0, width, height);
+            drawGrid(ctx, width, height, padding);
+
+            const peoplePoints = history.map((item, index) => ({
+                x: padding.left + (plotWidth * index) / Math.max(1, history.length - 1),
+                y: padding.top + plotHeight - (item.people / maxPeople) * plotHeight
+            }));
+            const waitPoints = history.map((item, index) => ({
+                x: padding.left + (plotWidth * index) / Math.max(1, history.length - 1),
+                y: padding.top + plotHeight - (item.wait / maxWait) * plotHeight
+            }));
+
+            drawLineSeries(ctx, peoplePoints, '#38bdf8');
+            drawLineSeries(ctx, waitPoints, '#fbbf24');
+
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(`人数峰值 ${maxPeople}`, padding.left, 14);
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText('人数', padding.left, height - 10);
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText('等待时间', padding.left + 48, height - 10);
+        }
+
+        function renderOccupancyChart() {
+            if (history.length < 2) {
+                drawEmptyChart('occupancy-chart', '至少需要 2 次采样生成趋势线');
+                return;
+            }
+
+            const canvas = document.getElementById('occupancy-chart');
+            const { ctx, width, height } = setupCanvas(canvas);
+            const padding = { top: 18, right: 20, bottom: 34, left: 42 };
+            const plotWidth = width - padding.left - padding.right;
+            const plotHeight = height - padding.top - padding.bottom;
+
+            ctx.clearRect(0, 0, width, height);
+            drawGrid(ctx, width, height, padding);
+
+            const points = history.map((item, index) => ({
+                x: padding.left + (plotWidth * index) / Math.max(1, history.length - 1),
+                y: padding.top + plotHeight - (item.occupancyRate / 100) * plotHeight
+            }));
+
+            drawLineSeries(ctx, points, '#34d399');
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('100%', 8, padding.top + 4);
+            ctx.fillText('0%', 16, padding.top + plotHeight);
+            ctx.fillStyle = '#34d399';
+            ctx.fillText('占用率', padding.left, height - 10);
+        }
+
+        function renderQueueChart() {
+            if (latestWindows.length === 0) {
+                drawEmptyChart('queue-chart', '暂无窗口数据');
+                document.getElementById('queue-chart-note').textContent = '--';
+                return;
+            }
+
+            const canvas = document.getElementById('queue-chart');
+            const { ctx, width, height } = setupCanvas(canvas);
+            const padding = { top: 18, right: 20, bottom: 38, left: 42 };
+            const plotWidth = width - padding.left - padding.right;
+            const plotHeight = height - padding.top - padding.bottom;
+            const maxQueue = Math.max(1, ...latestWindows.map(win => win.queueCount));
+            const barGap = 8;
+            const barWidth = Math.max(10, (plotWidth - barGap * (latestWindows.length - 1)) / latestWindows.length);
+
+            ctx.clearRect(0, 0, width, height);
+            drawGrid(ctx, width, height, padding);
+
+            latestWindows.forEach((win, index) => {
+                const barHeight = (win.queueCount / maxQueue) * plotHeight;
+                const x = padding.left + index * (barWidth + barGap);
+                const y = padding.top + plotHeight - barHeight;
+                ctx.fillStyle = win.status === 'closed' ? '#ef4444' : win.queueCount > 25 ? '#fb7185' : win.queueCount > 10 ? '#fbbf24' : '#38bdf8';
+                ctx.fillRect(x, y, barWidth, barHeight);
+
+                ctx.fillStyle = '#cbd5e1';
+                ctx.font = '11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(win.queueCount, x + barWidth / 2, y - 5);
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillText(index + 1, x + barWidth / 2, height - 14);
+            });
+
+            const totalQueue = latestWindows.reduce((sum, win) => sum + win.queueCount, 0);
+            document.getElementById('queue-chart-note').textContent = `总排队 ${totalQueue} 人`;
+        }
+
+        function renderCharts() {
+            renderTrendChart();
+            renderOccupancyChart();
+            renderQueueChart();
+        }
+
+        async function updateData() {
+            try {
+                await Promise.all([fetchWindows(), fetchTables(), fetchStatistics()]);
+                addHistoryPoint();
+                setStatus(`仿真运行中，${settings.refreshInterval || 3} 秒自动刷新`);
+            } catch (error) {
+                console.error('更新数据失败:', error);
+                setStatus('仿真服务连接失败');
+            }
+        }
+
+        function initScenarioButtons() {
+            const container = document.getElementById('scenario-buttons');
+            scenarios.forEach(scenario => {
+                const button = document.createElement('button');
+                button.className = 'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 text-sm font-bold text-slate-200 transition hover:border-sky-400 hover:text-sky-200';
+                button.type = 'button';
+                button.innerHTML = `<i data-lucide="${scenario.icon}" class="h-4 w-4"></i>${scenario.name}`;
+                button.addEventListener('click', () => applySettings(scenario.values));
+                container.appendChild(button);
+            });
+        }
+
+        function bindControls() {
+            settingKeys.forEach(key => {
+                document.getElementById(key).addEventListener('input', event => {
+                    document.getElementById(`${key}-value`).textContent = `${event.target.value}${suffixFor(key)}`;
+                });
+            });
+            document.getElementById('apply-settings').addEventListener('click', () => applySettings());
+            document.getElementById('refresh-now').addEventListener('click', updateData);
+            document.getElementById('clear-history').addEventListener('click', clearHistory);
+            document.getElementById('window-form').addEventListener('submit', addWindow);
+            window.addEventListener('resize', renderCharts);
+        }
+
+        async function init() {
+            initScenarioButtons();
+            bindControls();
+            renderIcons();
+            await fetchSettings();
+            await updateData();
+        }
+
+        init();
+    </script>
+</body>
+</html>

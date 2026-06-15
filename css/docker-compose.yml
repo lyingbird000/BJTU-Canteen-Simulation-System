@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  canteen:
+    build: .
+    container_name: canteen-monitor
+    ports:
+      - "3000:3000"
+    restart: always
+    environment:
+      - FLASK_ENV=production

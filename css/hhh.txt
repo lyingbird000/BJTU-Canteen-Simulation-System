@@ -1,0 +1,12 @@
+location /
+{
+    include uwsgi_params;
+    uwsgi_pass 127.0.0.1:;
+    uwsgi_param UWSGI_CHDIR /www/wwwroot/Flaskweb;
+
+}
+
+location /static/
+{
+    alias /www/wwwroot/Flaskweb/static;
+}
